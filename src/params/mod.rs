@@ -61,6 +61,7 @@ impl FromStr for DHChoice {
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum CipherChoice {
     ChaChaPoly,
+    XChaChaPoly,
     AESGCM,
 }
 
@@ -69,9 +70,10 @@ impl FromStr for CipherChoice {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use self::CipherChoice::*;
         match s {
-            "ChaChaPoly" => Ok(ChaChaPoly),
-            "AESGCM"     => Ok(AESGCM),
-            _            => bail!(PatternProblem::UnsupportedCipherType)
+            "ChaChaPoly"  => Ok(ChaChaPoly),
+            "XChaChaPoly" => Ok(XChaChaPoly),
+            "AESGCM"      => Ok(AESGCM),
+            _             => bail!(PatternProblem::UnsupportedCipherType)
         }
     }
 }

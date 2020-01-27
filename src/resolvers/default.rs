@@ -4,6 +4,8 @@ use blake2_rfc::blake2s::Blake2s;
 use sha2::{Digest, Sha256, Sha512};
 use rand::rngs::OsRng;
 use x25519_dalek as x25519;
+use chacha20poly1305::XChaCha20Poly1305;
+use aead::{NewAead, Aead, generic_array::GenericArray, Payload};
 #[cfg(feature = "pqclean_kyber1024")] use pqcrypto_kyber::kyber1024;
 #[cfg(feature = "pqclean_kyber1024")] use pqcrypto_traits::kem::{PublicKey, SecretKey, SharedSecret, Ciphertext};
 
@@ -45,6 +47,7 @@ impl CryptoResolver for DefaultResolver {
     fn resolve_cipher(&self, choice: &CipherChoice) -> Option<Box<dyn Cipher>> {
         match *choice {
             CipherChoice::ChaChaPoly => Some(Box::new(CipherChaChaPoly::default())),
+            CipherChoice::XChaChaPoly => Some(Box::new(CipherXChaChaPoly::default())),
             CipherChoice::AESGCM     => None,
         }
     }
@@ -68,6 +71,12 @@ struct Dh25519 {
 /// Wraps `chacha20_poly1305_aead`'s ChaCha20Poly1305 implementation.
 #[derive(Default)]
 struct CipherChaChaPoly {
+    key: [u8; 32],
+}
+
+/// Wraps `chachapoly1305`'s XChaCha20Poly1305 implementation.
+#[derive(Default)]
+struct CipherXChaChaPoly {
     key: [u8; 32],
 }
 
@@ -186,6 +195,63 @@ impl Cipher for CipherChaChaPoly {
                 }
             }
             Err(_) => Err(()),
+        }
+    }
+}
+
+impl Cipher for CipherXChaChaPoly {
+    fn name(&self) -> &'static str {
+        "XChaChaPoly"
+    }
+
+    fn set(&mut self, key: &[u8]) {
+        copy_slices!(key, &mut self.key);
+    }
+
+    fn encrypt(&self, nonce: u64, authtext: &[u8], plaintext: &[u8], out: &mut [u8]) -> usize {
+        let aead = XChaCha20Poly1305::new(GenericArray::clone_from_slice(&self.key));
+
+        // TODO: Should more than a u64 be suppliable from the outside?
+        let mut nonce_bytes = [0u8; 24];
+        copy_slices!(&nonce.to_le_bytes(), &mut nonce_bytes[0..]);
+        let nonce_arr = GenericArray::from_slice(&nonce_bytes); // 24-bytes; unique
+
+        let payload = Payload { aad: authtext, msg: plaintext };
+
+        let ciphertext = aead.encrypt(nonce_arr, payload).expect("encryption failure!");
+        let mut buf = Cursor::new(out);
+        buf.write_all(&ciphertext).unwrap();
+
+        if buf.position() > usize::max_value() as u64 {
+            panic!("usize overflow");
+        } else {
+            buf.position() as usize
+        }
+    }
+
+    fn decrypt(&self, nonce: u64, authtext: &[u8], ciphertext: &[u8], out: &mut [u8]) -> Result<usize, ()> {
+        let aead = XChaCha20Poly1305::new(GenericArray::clone_from_slice(&self.key));
+
+        // TODO: Maybe here more than a u64 should be supplied from the outside.
+        let mut nonce_bytes = [0u8; 24];
+        copy_slices!(&nonce.to_le_bytes(), &mut nonce_bytes[0..]);
+        let nonce_arr = GenericArray::from_slice(&nonce_bytes); // 24-bytes; unique
+
+        let payload = Payload { aad: authtext, msg: ciphertext };
+
+        let result = aead.decrypt(nonce_arr, payload);
+        let mut buf = Cursor::new(out);
+
+        match result {
+            Err(_) => Err(()),
+            Ok(plaintext) => {
+                buf.write_all(&plaintext).unwrap();
+                if buf.position() > usize::max_value() as u64 {
+                    panic!("usize overflow");
+                } else {
+                    Ok(buf.position() as usize)
+                }
+            }
         }
     }
 }
@@ -499,6 +565,25 @@ mod tests {
 
         let mut resulttext = [0u8; 117];
         let mut cipher2 : CipherChaChaPoly = Default::default();
+        cipher2.set(&key);
+        cipher2.decrypt(nonce, &authtext, &ciphertext, &mut resulttext).unwrap();
+        assert!(hex::encode(resulttext.to_vec()) == hex::encode(plaintext.to_vec()));
+    }
+
+    #[test]
+    fn test_xchachapoly_nonempty() {
+    //XChaChaPoly round-trip test, non-empty plaintext
+        let key = [0u8; 32];
+        let nonce = 0u64;
+        let plaintext = [0x34u8; 117];
+        let authtext = [0u8; 0];
+        let mut ciphertext = [0u8; 133];
+        let mut cipher1 : CipherXChaChaPoly = Default::default();
+        cipher1.set(&key);
+        cipher1.encrypt(nonce, &authtext, &plaintext, &mut ciphertext);
+
+        let mut resulttext = [0u8; 117];
+        let mut cipher2 : CipherXChaChaPoly = Default::default();
         cipher2.set(&key);
         cipher2.decrypt(nonce, &authtext, &ciphertext, &mut resulttext).unwrap();
         assert!(hex::encode(resulttext.to_vec()) == hex::encode(plaintext.to_vec()));
