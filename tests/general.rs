@@ -670,6 +670,53 @@ fn test_get_remote_static() {
 }
 
 #[test]
+fn test_xx_xchachapoly_blake2b() {
+
+    let params: NoiseParams = "Noise_XX_25519_XChaChaPoly_BLAKE2b".parse().unwrap();
+    let mut h_i = Builder::new(params.clone())
+        .local_private_key(&get_inc_key(0))
+        .fixed_ephemeral_key_for_testing_only(&get_inc_key(32))
+        .build_initiator().unwrap();
+    let mut h_r = Builder::new(params)
+        .local_private_key(&get_inc_key(64))
+        .fixed_ephemeral_key_for_testing_only(&get_inc_key(96))
+        .build_responder().unwrap();
+
+    let mut buf  = [0u8; 1024];
+    let mut buf2 = [0u8; 1024];
+
+    // XX(s, rs):
+    assert!(h_i.get_remote_static().is_none());
+    assert!(h_r.get_remote_static().is_none());
+
+    // 1 -> e
+    let len = h_i.write_message(&[], &mut buf).unwrap();
+    let _   = h_r.read_message(&buf[..len], &mut buf2).unwrap();
+    println!("1 {}", hex::encode(&buf[..len]));
+
+    assert!(h_i.get_remote_static().is_none());
+    assert!(h_r.get_remote_static().is_none());
+
+    // 2 <- e, ee s, es
+    let len = h_r.write_message(&[], &mut buf).unwrap();
+    let _   = h_i.read_message(&buf[..len], &mut buf2).unwrap();
+    println!("2 {}", hex::encode(&buf[..len]));
+
+
+    assert_eq!(h_i.get_remote_static().unwrap(), &x25519::x25519(get_inc_key(64), x25519::X25519_BASEPOINT_BYTES));
+    assert!(h_r.get_remote_static().is_none());
+
+    // 3 -> s, se
+    let len = h_i.write_message(&[], &mut buf).unwrap();
+    let _   = h_r.read_message(&buf[..len], &mut buf2).unwrap();
+    println!("3 {}", hex::encode(&buf[..len]));
+
+
+    assert_eq!(h_i.get_remote_static().unwrap(), &x25519::x25519(get_inc_key(64), x25519::X25519_BASEPOINT_BYTES));
+    assert_eq!(h_r.get_remote_static().unwrap(), &x25519::x25519(get_inc_key(0), x25519::X25519_BASEPOINT_BYTES));
+}
+
+#[test]
 fn test_set_psk() {
     let params: NoiseParams = "Noise_XXpsk3_25519_ChaChaPoly_SHA256".parse().unwrap();
     let mut h_i = Builder::new(params.clone())
