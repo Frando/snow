@@ -213,7 +213,7 @@ impl Cipher for CipherXChaChaPoly {
 
         // TODO: Should more than a u64 be suppliable from the outside?
         let mut nonce_bytes = [0u8; 24];
-        copy_slices!(&nonce.to_le_bytes(), &mut nonce_bytes[0..]);
+        copy_slices!(&nonce.to_le_bytes(), &mut nonce_bytes[16..]);
         let nonce_arr = GenericArray::from_slice(&nonce_bytes); // 24-bytes; unique
 
         let payload = Payload { aad: authtext, msg: plaintext };
@@ -234,7 +234,7 @@ impl Cipher for CipherXChaChaPoly {
 
         // TODO: Maybe here more than a u64 should be supplied from the outside.
         let mut nonce_bytes = [0u8; 24];
-        copy_slices!(&nonce.to_le_bytes(), &mut nonce_bytes[0..]);
+        copy_slices!(&nonce.to_le_bytes(), &mut nonce_bytes[16..]);
         let nonce_arr = GenericArray::from_slice(&nonce_bytes); // 24-bytes; unique
 
         let payload = Payload { aad: authtext, msg: ciphertext };
