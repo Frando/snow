@@ -27,6 +27,7 @@ vector-tests = []
 hfs = []
 pqclean_kyber1024 = ["pqcrypto-kyber", "pqcrypto-traits", "hfs", "default-resolver"]
 risky-raw-split = []
+xchachapoly = ["chacha20poly1305", "default-resolver"]
 
 [[bench]]
 name = "benches"
